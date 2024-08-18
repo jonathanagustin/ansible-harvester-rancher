@@ -1,0 +1,108 @@
+---
+# roles/harvester_install/tasks/pre_install_checks.yml
+
+- name: Verify Harvester ISO exists
+  ansible.builtin.stat:
+    path: "{{ harvester_iso_path }}"
+  register: iso_file
+  delegate_to: localhost
+
+- name: Fail if Harvester ISO doesn't exist
+  ansible.builtin.fail:
+    msg: "Harvester ISO not found at {{ harvester_iso_path }}"
+  when: not iso_file.stat.exists
+
+- name: Check iDRAC firmware version
+  dellemc.openmanage.idrac_firmware:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+  register: idrac_firmware
+
+- name: Verify iDRAC firmware version
+  ansible.builtin.assert:
+    that:
+      - idrac_firmware.firmware_version is version(dell_idrac_version_min, '>=')
+    fail_msg: "iDRAC firmware version is below the minimum required version {{ dell_idrac_version_min }}"
+
+- name: Check Dell BIOS settings
+  dellemc.openmanage.idrac_bios:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    attributes: "{{ dell_bios_settings | items2dict(key_name='name', value_name='value') }}"
+  register: bios_check
+
+- name: Apply required BIOS settings if needed
+  dellemc.openmanage.idrac_bios:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    attributes: "{{ dell_bios_settings | items2dict(key_name='name', value_name='value') }}"
+  when: bios_check.changed
+
+- name: Check available disk space
+  dellemc.openmanage.idrac_storage_volume:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    state: "view"
+  register: storage_info
+
+- name: Verify minimum disk space
+  ansible.builtin.assert:
+    that:
+      - storage_info.storage_volume | sum(attribute='size_mb') > min_disk_space
+    fail_msg: "Insufficient disk space for Harvester installation"
+    success_msg: "Sufficient disk space available for Harvester installation"
+
+- name: Check network connectivity
+  ansible.builtin.wait_for:
+    host: "{{ inventory_hostname }}"
+    port: 22
+    timeout: "{{ network_check_timeout }}"
+  ignore_errors: true
+  register: network_check
+
+- name: Verify network connectivity
+  ansible.builtin.assert:
+    that:
+      - network_check is success
+    fail_msg: "Unable to reach {{ inventory_hostname }} on port 22"
+    success_msg: "Network connectivity to {{ inventory_hostname }} verified"
+
+- name: Check network bandwidth
+  ansible.builtin.command: >
+    iperf3 -c {{ hostvars[groups['idrac_hosts'][0]]['ansible_host'] }} -t 5 | grep receiver | awk '{print $7}'
+  register: bandwidth_check
+  changed_when: false
+  failed_when: bandwidth_check.stdout | float < min_network_bandwidth | float
+
+- name: Set Dell power profile
+  dellemc.openmanage.idrac_server_config_profile:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    attributes:
+      SystemProfile: "{{ dell_power_profile }}"
+
+- name: Verify CPU and memory requirements
+  dellemc.openmanage.idrac_system_info:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+  register: system_info
+
+- name: Assert CPU and memory meet requirements
+  ansible.builtin.assert:
+    that:
+      - system_info.cpu.count >= min_cpu_count
+      - system_info.memory.total_mb >= min_memory_gb * 1024
+    fail_msg: "System does not meet minimum CPU or memory requirements"
+    success_msg: "System meets minimum CPU and memory requirements"
+
+- name: Log pre-installation checks completion
+  ansible.builtin.debug:
+    msg: "Pre-installation checks completed successfully for {{ inventory_hostname }}"
+  changed_when: true
+  notify: Log Pre-Installation Checks

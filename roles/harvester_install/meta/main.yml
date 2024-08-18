@@ -1,0 +1,26 @@
+---
+galaxy_info:
+  author: drengskapur
+  description: Installs and configures Harvester on Dell servers using iPXE
+  company: Your Company Name
+  license: BSD-3-Clause
+  min_ansible_version: "2.9"
+  platforms:
+    - name: EL
+      versions:
+        - "8"
+    - name: Ubuntu
+      versions:
+        - focal
+        - bionic
+  galaxy_tags:
+    - harvester
+    - kubernetes
+    - virtualization
+    - dell
+    - ipxe
+    - pxe
+dependencies:
+  - name: community.general
+  - name: dellemc.openmanage
+  - name: containers.podman

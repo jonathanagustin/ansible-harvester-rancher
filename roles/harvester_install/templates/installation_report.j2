@@ -1,0 +1,51 @@
+Harvester Installation Report
+=============================
+
+Host: {{ inventory_hostname }}
+IP Address: {{ ansible_host }}
+Installation Date: {{ ansible_date_time.iso8601 }}
+
+Installation Status: {{ 'Successful' if installation_completed else 'Failed' }}
+
+Harvester Version: {{ pxe_harvester_version }}
+Cluster VIP: {{ harvester_vip }}
+
+Hardware Information:
+---------------------
+Manufacturer: {{ idrac_info.system_info.manufacturer }}
+Model: {{ idrac_info.system_info.model }}
+Service Tag: {{ idrac_info.system_info.service_tag }}
+
+Network Configuration:
+----------------------
+Management Interface: {{ pxe_harvester_mgmt_interface }}
+IP Address: {{ ansible_host }}
+Netmask: {{ netmask }}
+Gateway: {{ gateway }}
+DNS Servers: {{ dns_servers }}
+NTP Servers: {{ ntp_servers }}
+
+Storage Configuration:
+----------------------
+OS Disk: {{ pxe_harvester_osdisk }}
+Data Disk: {{ pxe_harvester_datadisk }}
+
+Additional Configurations:
+--------------------------
+RAID Configured: {{ 'Yes' if configure_raid else 'No' }}
+Additional Storage Configured: {{ 'Yes' if configure_additional_storage else 'No' }}
+Additional Network Configured: {{ 'Yes' if configure_additional_network else 'No' }}
+Monitoring Enabled: {{ 'Yes' if enable_monitoring else 'No' }}
+Backup Enabled: {{ 'Yes' if enable_backup else 'No' }}
+
+{% if installation_completed %}
+Post-Installation Checks:
+-------------------------
+Cluster Health: {{ cluster_health | default('Not Checked') }}
+API Accessible: {{ 'Yes' if api_accessible else 'No' }}
+All Nodes Joined: {{ 'Yes' if all_nodes_joined else 'No' }}
+{% endif %}
+
+Notes:
+------
+{{ installation_notes | default('No additional notes.') }}

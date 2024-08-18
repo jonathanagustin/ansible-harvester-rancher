@@ -1,0 +1,70 @@
+---
+# tasks file for harvester_install
+
+- name: Include variable documentation
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/vars_documentation.yml"
+  tags: [always, documentation]
+
+- name: Run pre-installation checks
+  ansible.builtin.import_tasks: pre_install_checks.yml
+  tags: [pre-install, checks]
+
+- name: Configure iDRAC and server settings
+  ansible.builtin.import_tasks: idrac_configuration.yml
+  tags: [idrac, configuration]
+
+- name: Prepare PXE environment
+  ansible.builtin.import_tasks: prepare_pxe.yml
+  tags: [pxe, setup]
+
+- name: Install Harvester
+  ansible.builtin.import_tasks: install.yml
+  tags: [install]
+
+- name: Monitor installation progress
+  ansible.builtin.import_tasks: monitor_installation.yml
+  tags: [install, monitor]
+
+- name: Perform post-installation tasks
+  ansible.builtin.import_tasks: post_install_config.yml
+  when: installation_completed | default(false)
+  tags: [post-install, configuration]
+
+- name: Verify cluster
+  ansible.builtin.import_tasks: verify_cluster.yml
+  when: installation_completed | default(false)
+  tags: [verification, cluster]
+
+- name: Handle installation failure
+  ansible.builtin.import_tasks: rollback.yml
+  when: not installation_completed | default(true)
+  tags: [error-handling, rollback]
+
+- name: Generate installation report
+  ansible.builtin.template:
+    src: installation_report.j2
+    dest: "/var/log/harvester_installation_report_{{ inventory_hostname }}.txt"
+  delegate_to: localhost
+  tags: [report]
+
+- name: Cleanup temporary files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ role_path }}/files/data/harvester.iso"
+    - "{{ role_path }}/files/data/harvester-vmlinuz"
+    - "{{ role_path }}/files/data/harvester-initrd"
+    - "{{ role_path }}/files/data/harvester-rootfs"
+  when: cleanup_temp_files | default(true)
+  tags: [cleanup]
+
+- name: Notify about completion
+  ansible.builtin.debug:
+    msg: "Harvester installation process completed for {{ inventory_hostname }}. Please check the installation report for details."
+  changed_when: true
+  notify:
+    - Log Installation Completion
+    - Send Final Notification
+  tags: [notification]

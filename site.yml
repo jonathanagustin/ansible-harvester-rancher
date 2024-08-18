@@ -1,0 +1,50 @@
+---
+- name: Install Harvester on Dell Servers
+  hosts: idrac_hosts
+  gather_facts: false
+  vars_files:
+    - vars/main.yml
+    - vars/secrets.yml # Make sure this file is encrypted with ansible-vault
+
+  pre_tasks:
+    - name: Verify Dell server compatibility
+      ansible.builtin.assert:
+        that: ansible_facts['system_vendor'] == "Dell Inc."
+        msg: "This playbook is designed for Dell servers only"
+      tags: [always, verification]
+
+  roles:
+    - role: harvester_install
+      vars:
+        pxe_harvester_version: "{{ harvester_version }}"
+        pxe_harvester_vip: "{{ harvester_vip }}"
+        gateway: "{{ network_gateway }}"
+        dns_servers: "{{ network_dns_servers }}"
+        ntp_servers: "{{ network_ntp_servers }}"
+        cluster_token: "{{ harvester_cluster_token }}"
+      tags: [harvester, install]
+
+  post_tasks:
+    - name: Final cluster verification
+      ansible.builtin.include_role:
+        name: harvester_install
+        tasks_from: verify_cluster
+      when: installation_completed | default(false)
+      run_once: true
+      tags: [verification, cluster]
+
+    - name: Update inventory
+      ansible.builtin.add_host:
+        name: "{{ inventory_hostname }}"
+        groups: "harvester_nodes"
+        ansible_host: "{{ ansible_host }}"
+      when: installation_completed | default(false)
+      changed_when: true
+      tags: [inventory]
+
+  handlers:
+    - name: Reboot server
+      ansible.builtin.include_role:
+        name: harvester_install
+        tasks_from: reboot_server
+      listen: "reboot_required"

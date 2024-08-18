@@ -1,0 +1,83 @@
+---
+# roles/harvester_install/tasks/install.yml
+
+- name: Ensure server is powered on
+  dellemc.openmanage.idrac_power:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    state: "on"
+  register: power_result
+  until: power_result is success
+  retries: 3
+  delay: 10
+
+- name: Initiate PXE boot
+  dellemc.openmanage.idrac_boot:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    boot_device: "PXE"
+    boot_mode: "OneTime"
+  register: boot_result
+  until: boot_result is success
+  retries: 3
+  delay: 10
+
+- name: Reboot server to start installation
+  dellemc.openmanage.idrac_power:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    state: "reboot"
+  register: reboot_result
+  until: reboot_result is success
+  retries: 3
+  delay: 10
+
+- name: Wait for server to start installation
+  wait_for:
+    host: "{{ inventory_hostname }}"
+    port: 22
+    state: started
+    delay: 60
+    timeout: 600
+  register: ssh_result
+  ignore_errors: true
+
+- name: Check installation progress via iDRAC
+  dellemc.openmanage.idrac_lifecycle_controller_job_info:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+  register: lc_job_info
+  until: lc_job_info.jobs | selectattr('job_status', 'equalto', 'Running') | list | length == 0
+  retries: 60
+  delay: 60
+  when: ssh_result is failed
+
+- name: Set fact for installation status
+  set_fact:
+    installation_completed: "{{ ssh_result is success or (lc_job_info.jobs | selectattr('job_status', 'equalto', 'Completed') | list | length > 0) }}"
+
+- name: Fail if installation was not successful
+  fail:
+    msg: "Harvester installation failed on {{ inventory_hostname }}"
+  when: not installation_completed
+
+- name: Wait for Harvester API to be available
+  uri:
+    url: "https://{{ pxe_harvester_vip }}/v1/harvester/version"
+    validate_certs: no
+  register: api_result
+  until: api_result.status == 200
+  retries: "{{ api_check_retries | default(60) }}"
+  delay: "{{ api_check_delay | default(10) }}"
+  when: installation_completed
+
+- name: Log successful installation
+  debug:
+    msg: "Harvester installation completed successfully on {{ inventory_hostname }}"
+  when: installation_completed
+  changed_when: true
+  notify: Log Installation Success

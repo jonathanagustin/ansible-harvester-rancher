@@ -1,0 +1,19 @@
+# roles/harvester_install/molecule/default/verify.yml
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check if Harvester config file exists
+      stat:
+        path: /path/to/harvester/config
+      register: harvester_config
+
+    - name: Verify Harvester config file exists
+      assert:
+        that:
+          - harvester_config.stat.exists
+        fail_msg: "Harvester config file does not exist"
+        success_msg: "Harvester config file exists"
+
+    # Add more verification tasks as needed

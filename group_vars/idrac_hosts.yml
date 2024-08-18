@@ -1,0 +1,58 @@
+---
+# group_vars/idrac_hosts.yml
+
+# iDRAC credentials
+# Note: In a production environment, consider using Ansible Vault to encrypt these
+idrac_username: root
+idrac_password: calvin # Replace with your actual iDRAC password
+
+# Harvester configuration
+harvester_password: "YourSecurePassword" # Replace with a secure password for Harvester OS
+ssh_public_key: "ssh-rsa AAAAB...  your_public_key_here" # Replace with your actual public SSH key
+
+# Network configuration
+broadcast_address: 192.168.1.255
+default_route: "192.168.1.0/24,{{ gateway }}"
+
+# RAID configuration
+configure_raid: true
+raid_controller_id: "RAID.Integrated.1-1"
+raid_capacity_gb: 558.375
+raid_drives:
+  - "Disk.Bay.0:Enclosure.Internal.0-1:RAID.Integrated.1-1"
+  - "Disk.Bay.1:Enclosure.Internal.0-1:RAID.Integrated.1-1"
+
+# Dell BIOS settings
+dell_bios_settings:
+  - name: "ProcVirtualization"
+    value: "Enabled"
+  - name: "SriovGlobalEnable"
+    value: "Enabled"
+  - name: "SystemProfile"
+    value: "PerfOptimized"
+
+# Timeouts and retry counts
+api_check_retries: 60
+api_check_delay: 10
+installation_timeout: 3600
+network_check_timeout: 60
+
+# System requirements
+min_cpu_count: 8
+min_memory_gb: 32
+min_disk_space_gb: 120
+
+# Additional configuration options
+configure_additional_storage: false
+configure_additional_network: false
+apply_custom_manifests: false
+enable_monitoring: false
+enable_backup: false
+
+# Cleanup configuration
+cleanup_temp_files: true
+
+# Notification settings
+admin_email: "admin@example.com"
+mattermost_webhook_url: "https://mattermost.example.com/hooks/your_webhook_key"
+mattermost_channel: "harvester-notifications"

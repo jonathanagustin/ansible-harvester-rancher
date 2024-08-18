@@ -1,0 +1,123 @@
+---
+# roles/harvester_install/tasks/prepare_pxe.yml
+
+- name: Ensure required variables are defined
+  assert:
+    that:
+      - pxe_harvester_version is defined
+      - pxe_harvester_mgmt_interface is defined
+      - pxe_harvester_vip is defined
+      - pxe_harvester_vip_mac is defined
+      - pxe_harvester_osdisk is defined
+      - pxe_harvester_datadisk is defined
+    fail_msg: "One or more required variables are not defined"
+
+- name: Download Harvester ISO
+  get_url:
+    url: "{{ pxe_iso_url }}"
+    dest: "{{ role_path }}/files/data/harvester.iso"
+    checksum: "{{ pxe_iso_checksum }}"
+    mode: "0644"
+  register: harvester_iso
+
+- name: Download Harvester kernel
+  get_url:
+    url: "{{ pxe_kernel_url }}"
+    dest: "{{ role_path }}/files/data/harvester-vmlinuz"
+    checksum: "{{ pxe_kernel_checksum }}"
+    mode: "0644"
+  register: harvester_kernel
+
+- name: Download Harvester initrd
+  get_url:
+    url: "{{ pxe_initrd_url }}"
+    dest: "{{ role_path }}/files/data/harvester-initrd"
+    checksum: "{{ pxe_initrd_checksum }}"
+    mode: "0644"
+  register: harvester_initrd
+
+- name: Download Harvester rootfs
+  get_url:
+    url: "{{ pxe_rootfs_url }}"
+    dest: "{{ role_path }}/files/data/harvester-rootfs"
+    checksum: "{{ pxe_rootfs_checksum }}"
+    mode: "0644"
+  register: harvester_rootfs
+
+- name: Clone iPXE repository
+  git:
+    repo: "https://github.com/ipxe/ipxe.git"
+    dest: "{{ role_path }}/files/data/ipxe"
+    version: master
+    depth: 1
+
+- name: Generate Harvester iPXE script
+  template:
+    src: harvester.ipxe.j2
+    dest: "{{ role_path }}/files/data/ipxe/src/harvester.ipxe"
+    mode: "0644"
+
+- name: Build iPXE
+  command:
+    cmd: make bin/undionly.kpxe EMBED=harvester.ipxe
+    chdir: "{{ role_path }}/files/data/ipxe/src"
+  args:
+    creates: "{{ role_path }}/files/data/ipxe/src/bin/undionly.kpxe"
+
+- name: Generate Harvester config
+  template:
+    src: harvester-config.yaml.j2
+    dest: "{{ role_path }}/files/data/harvester-config.yaml"
+    mode: "0644"
+
+- name: Generate dnsmasq config
+  template:
+    src: dnsmasq.conf.j2
+    dest: "{{ role_path }}/files/data/dnsmasq.conf"
+    mode: "0644"
+
+- name: Ensure dnsmasq container is running
+  containers.podman.podman_container:
+    name: dnsmasq
+    image: dnsmasq
+    state: started
+    network: host
+    ports:
+      - "67:67/udp"
+    volumes:
+      - "{{ role_path }}/files/data/dnsmasq.conf:/etc/dnsmasq.conf:ro"
+      - "{{ role_path }}/files/data/ipxe/src/bin/undionly.kpxe:/srv/tftp/undionly.kpxe:ro"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+  register: dnsmasq_container
+
+- name: Ensure nginx container is running
+  containers.podman.podman_container:
+    name: nginx
+    image: nginx
+    state: started
+    ports:
+      - "80:80"
+    volumes:
+      - "{{ role_path }}/files/data/harvester.iso:/usr/share/nginx/html/harvester.iso:ro"
+      - "{{ role_path }}/files/data/harvester-vmlinuz:/usr/share/nginx/html/harvester-vmlinuz:ro"
+      - "{{ role_path }}/files/data/harvester-initrd:/usr/share/nginx/html/harvester-initrd:ro"
+      - "{{ role_path }}/files/data/harvester-rootfs:/usr/share/nginx/html/harvester-rootfs:ro"
+      - "{{ role_path }}/files/data/harvester-config.yaml:/usr/share/nginx/html/harvester-config.yaml:ro"
+  register: nginx_container
+
+- name: Wait for services to be fully operational
+  wait_for:
+    port: "{{ item }}"
+    timeout: 30
+  loop:
+    - 67 # DHCP
+    - 80 # HTTP
+  when: dnsmasq_container.changed or nginx_container.changed
+
+- name: Log PXE environment preparation completion
+  ansible.builtin.debug:
+    msg: "PXE environment preparation completed successfully"
+  changed_when: true
+  notify: Log PXE Preparation

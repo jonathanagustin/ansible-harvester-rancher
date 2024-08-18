@@ -1,0 +1,90 @@
+---
+# roles/harvester_install/tasks/monitor_installation.yml
+
+- name: Set installation started flag
+  set_fact:
+    installation_started: true
+
+- name: Wait for Harvester installation to complete
+  block:
+    - name: Check if SSH is available
+      wait_for:
+        host: "{{ inventory_hostname }}"
+        port: 22
+        state: started
+        delay: 300 # Wait 5 minutes before starting to check
+        timeout: 3600 # Total timeout of 1 hour
+      register: ssh_result
+      ignore_errors: true
+
+    - name: Check installation progress via iDRAC
+      dellemc.openmanage.idrac_lifecycle_controller_job_info:
+        idrac_ip: "{{ inventory_hostname }}"
+        idrac_user: "{{ secrets.idrac_credentials.username }}"
+        idrac_password: "{{ secrets.idrac_credentials.password }}"
+      register: lc_job_info
+      until: lc_job_info.jobs | selectattr('job_status', 'equalto', 'Running') | list | length == 0
+      retries: 60
+      delay: 60
+      when: ssh_result is failed
+
+    - name: Evaluate installation status
+      set_fact:
+        installation_completed: "{{ ssh_result is success or (lc_job_info.jobs | selectattr('job_status', 'equalto', 'Completed') | list | length > 0) }}"
+
+  rescue:
+    - name: Log installation monitoring failure
+      debug:
+        msg: >
+          Failed to monitor installation progress. This could be due to network issues, iDRAC problems, or an unexpected error during installation.
+          Manual verification of the installation status is required.
+      failed_when: true
+
+- name: Check Harvester API availability
+  uri:
+    url: "https://{{ pxe_harvester_vip }}/v1/harvester/version"
+    validate_certs: no
+  register: api_result
+  until: api_result.status == 200
+  retries: "{{ api_check_retries | default(60) }}"
+  delay: "{{ api_check_delay | default(10) }}"
+  when: installation_completed | default(false)
+
+- name: Verify Harvester services
+  command: kubectl get pods -n harvester-system
+  register: harvester_pods
+  changed_when: false
+  failed_when: "'Running' not in harvester_pods.stdout"
+  delegate_to: localhost
+  run_once: true
+  when: installation_completed | default(false)
+
+- name: Log installation status
+  debug:
+    msg: "Harvester installation {{ 'completed successfully' if installation_completed | default(false) else 'failed' }} on {{ inventory_hostname }}"
+  changed_when: installation_completed | default(false)
+  notify:
+    - Log Installation Success
+    - Send Email Notification
+  when: installation_completed | default(false)
+
+- name: Handle installation failure
+  block:
+    - name: Implement rollback on failure
+      include_tasks: rollback.yml
+
+    - name: Notify administrators of failure
+      mail:
+        to: "{{ admin_email }}"
+        subject: "Harvester installation failed on {{ inventory_hostname }}"
+        body: >
+          The Harvester installation on {{ inventory_hostname }} has failed.
+          Rollback has been attempted. Please check the system and logs for more information.
+          Timestamp: {{ ansible_date_time.iso8601 }}
+      delegate_to: localhost
+  when: not installation_completed | default(true)
+
+- name: Update inventory status
+  add_host:
+    name: "{{ inventory_hostname }}"
+    groups: "{{ 'harvester_installed' if installation_completed | default(false) else 'installation_failed' }}"

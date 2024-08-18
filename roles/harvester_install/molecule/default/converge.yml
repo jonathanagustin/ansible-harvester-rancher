@@ -1,0 +1,8 @@
+# roles/harvester_install/molecule/default/converge.yml
+---
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Include harvester_install role
+      include_role:
+        name: harvester_install

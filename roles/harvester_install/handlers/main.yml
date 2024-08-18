@@ -1,0 +1,88 @@
+---
+# roles/harvester_install/handlers/main.yml
+
+- name: Reboot server
+  dellemc.openmanage.idrac_power:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    state: "reboot"
+  listen: "reboot_required"
+
+- name: Update inventory
+  meta: refresh_inventory
+  listen: "update_inventory"
+
+- name: Log Installation Success
+  ansible.builtin.debug:
+    msg: "Harvester installation completed successfully on {{ inventory_hostname }} at {{ ansible_date_time.iso8601 }}"
+  listen: "log_installation_success"
+
+- name: Send Email Notification
+  ansible.builtin.mail:
+    to: "{{ admin_email }}"
+    subject: "Harvester installation completed on {{ inventory_hostname }}"
+    body: "Harvester has been successfully installed on {{ inventory_hostname }} at {{ ansible_date_time.iso8601 }}"
+  delegate_to: localhost
+  listen: "send_email_notification"
+
+- name: Log Pre-Installation Checks
+  ansible.builtin.debug:
+    msg: "Pre-installation checks completed for {{ inventory_hostname }} at {{ ansible_date_time.iso8601 }}"
+  listen: "log_pre_installation_checks"
+
+- name: Log iDRAC Configuration
+  ansible.builtin.debug:
+    msg: "iDRAC configuration completed for {{ inventory_hostname }} at {{ ansible_date_time.iso8601 }}"
+  listen: "log_idrac_configuration"
+
+- name: Log PXE Preparation
+  ansible.builtin.debug:
+    msg: "PXE environment preparation completed at {{ ansible_date_time.iso8601 }}"
+  listen: "log_pxe_preparation"
+
+- name: Log Post-Installation Configuration
+  ansible.builtin.debug:
+    msg: "Post-installation configuration completed for {{ inventory_hostname }} at {{ ansible_date_time.iso8601 }}"
+  listen: "log_post_installation_configuration"
+
+- name: Log Cluster Verification
+  ansible.builtin.debug:
+    msg: "Cluster verification completed for {{ inventory_hostname }} at {{ ansible_date_time.iso8601 }}"
+  listen: "log_cluster_verification"
+
+- name: Update Monitoring System
+  uri:
+    url: "{{ monitoring_system_url }}/api/update"
+    method: POST
+    body_format: json
+    body:
+      host: "{{ inventory_hostname }}"
+      status: "Harvester installed"
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+  delegate_to: localhost
+  listen: "update_monitoring_system"
+
+- name: Cleanup Installation Files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ role_path }}/files/data/harvester.iso"
+    - "{{ role_path }}/files/data/harvester-vmlinuz"
+    - "{{ role_path }}/files/data/harvester-initrd"
+    - "{{ role_path }}/files/data/harvester-rootfs"
+  listen: "cleanup_installation_files"
+
+- name: Notify Mattermost
+  uri:
+    url: "{{ mattermost_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: "Harvester installation on {{ inventory_hostname }} completed with status: {{ installation_status }}"
+      channel: "{{ mattermost_channel | default('Harvester Installations') }}"
+      username: "Ansible Harvester Installer"
+      icon_url: "https://www.ansible.com/hubfs/2016_Images/Assets/Ansible-Mark-Large-RGB-Pool.png"
+  delegate_to: localhost
+  listen: "notify_mattermost"

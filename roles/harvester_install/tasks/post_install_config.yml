@@ -1,0 +1,135 @@
+---
+# roles/harvester_install/tasks/post_install_config.yml
+
+- name: Wait for Harvester API to be fully available
+  uri:
+    url: "https://{{ pxe_harvester_vip }}/v1/harvester/version"
+    validate_certs: no
+  register: api_result
+  until: api_result.status == 200
+  retries: "{{ api_check_retries | default(60) }}"
+  delay: "{{ api_check_delay | default(10) }}"
+
+- name: Get kubeconfig
+  command: >
+    kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get secret harvester-kubeconfig -n harvester-system -o jsonpath='{.data.value}' | base64 --decode
+  register: kubeconfig_result
+  changed_when: false
+  delegate_to: "{{ groups['idrac_hosts'][0] }}"
+  run_once: true
+
+- name: Save kubeconfig locally
+  copy:
+    content: "{{ kubeconfig_result.stdout }}"
+    dest: "{{ playbook_dir }}/harvester-kubeconfig"
+    mode: "0600"
+  delegate_to: localhost
+  run_once: true
+
+- name: Configure additional storage (if needed)
+  block:
+    - name: Create Longhorn storage class
+      k8s:
+        definition:
+          apiVersion: storage.k8s.io/v1
+          kind: StorageClass
+          metadata:
+            name: longhorn
+          provisioner: driver.longhorn.io
+          parameters:
+            numberOfReplicas: "3"
+            staleReplicaTimeout: "2880"
+        kubeconfig: "{{ playbook_dir }}/harvester-kubeconfig"
+      run_once: true
+
+    - name: Set Longhorn as default storage class
+      k8s:
+        definition:
+          apiVersion: storage.k8s.io/v1
+          kind: StorageClass
+          metadata:
+            name: longhorn
+            annotations:
+              storageclass.kubernetes.io/is-default-class: "true"
+        kubeconfig: "{{ playbook_dir }}/harvester-kubeconfig"
+      run_once: true
+  when: configure_additional_storage | default(false)
+
+- name: Configure additional networking (if needed)
+  block:
+    - name: Create additional network
+      k8s:
+        definition:
+          apiVersion: network.harvesterhci.io/v1beta1
+          kind: ClusterNetwork
+          metadata:
+            name: additional-network
+          spec:
+            config:
+              cidr: "{{ additional_network_cidr }}"
+        kubeconfig: "{{ playbook_dir }}/harvester-kubeconfig"
+      run_once: true
+  when: configure_additional_network | default(false)
+
+- name: Apply any custom manifests
+  k8s:
+    src: "{{ item }}"
+    kubeconfig: "{{ playbook_dir }}/harvester-kubeconfig"
+  with_fileglob:
+    - "{{ playbook_dir }}/custom_manifests/*.yaml"
+  run_once: true
+  when: apply_custom_manifests | default(false)
+
+- name: Configure monitoring (if enabled)
+  block:
+    - name: Deploy Prometheus operator
+      k8s:
+        definition:
+          apiVersion: helm.fluxcd.io/v1
+          kind: HelmRelease
+          metadata:
+            name: prometheus-operator
+            namespace: monitoring
+          spec:
+            releaseName: prometheus-operator
+            chart:
+              repository: https://prometheus-community.github.io/helm-charts
+              name: kube-prometheus-stack
+              version: 18.0.0
+        kubeconfig: "{{ playbook_dir }}/harvester-kubeconfig"
+      run_once: true
+  when: enable_monitoring | default(false)
+
+- name: Configure backup (if enabled)
+  block:
+    - name: Deploy Velero
+      k8s:
+        definition:
+          apiVersion: helm.fluxcd.io/v1
+          kind: HelmRelease
+          metadata:
+            name: velero
+            namespace: velero
+          spec:
+            releaseName: velero
+            chart:
+              repository: https://vmware-tanzu.github.io/helm-charts
+              name: velero
+              version: 2.27.1
+        kubeconfig: "{{ playbook_dir }}/harvester-kubeconfig"
+      run_once: true
+  when: enable_backup | default(false)
+
+- name: Verify post-installation configuration
+  debug:
+    msg: "Post-installation configuration completed successfully"
+  changed_when: true
+  notify: Log Post-Installation Configuration
+
+- name: Update local kubectl config
+  blockinfile:
+    path: "~/.kube/config"
+    block: "{{ kubeconfig_result.stdout }}"
+    marker: "# {mark} HARVESTER KUBECONFIG"
+  delegate_to: localhost
+  run_once: true

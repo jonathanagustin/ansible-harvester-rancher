@@ -1,0 +1,144 @@
+---
+# roles/harvester_install/tasks/verify_cluster.yml
+
+- name: Wait for Harvester API to be available
+  uri:
+    url: "https://{{ pxe_harvester_vip }}/v1/version"
+    validate_certs: no
+  register: result
+  until: result.status == 200
+  retries: "{{ api_check_retries | default(60) }}"
+  delay: "{{ api_check_delay | default(10) }}"
+
+- name: Verify Harvester cluster health
+  uri:
+    url: "https://{{ pxe_harvester_vip }}/v1/health"
+    validate_certs: no
+  register: health_check
+  failed_when: health_check.json.status != "OK"
+
+- name: Get Harvester node list
+  uri:
+    url: "https://{{ pxe_harvester_vip }}/v1//nodes"
+    validate_certs: no
+  register: node_list
+
+- name: Verify all nodes are present
+  assert:
+    that:
+      - node_list.json | length == groups['idrac_hosts'] | length
+    fail_msg: "Not all nodes are present in the Harvester cluster"
+    success_msg: "All nodes are present in the Harvester cluster"
+
+- name: Check each node's status
+  uri:
+    url: "https://{{ pxe_harvester_vip }}/v1/harvester/nodes/{{ item }}"
+    validate_certs: no
+  register: node_status
+  failed_when: node_status.json.status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first != 'True'
+  loop: "{{ groups['idrac_hosts'] }}"
+
+- name: Verify Longhorn status
+  uri:
+    url: "https://{{ pxe_harvester_vip }}/v1/harvester/longhornvolumes"
+    validate_certs: no
+  register: longhorn_status
+  failed_when: longhorn_status.json | selectattr('status.state', 'equalto', 'attached') | list | length == 0
+
+- name: Get Longhorn volume details
+  uri:
+    url: "https://{{ pxe_harvester_vip }}/v1/longhorn/volumes"
+    validate_certs: no
+  register: longhorn_volumes
+
+- name: Verify Longhorn volume health
+  assert:
+    that:
+      - longhorn_volumes.json | selectattr('state', 'equalto', 'attached') | list | length > 0
+      - longhorn_volumes.json | selectattr('robustness', 'equalto', 'healthy') | list | length == longhorn_volumes.json | length
+    fail_msg: "One or more Longhorn volumes are not healthy or attached"
+    success_msg: "All Longhorn volumes are healthy and attached"
+
+- name: Check cluster nodes' roles
+  uri:
+    url: "https://{{ pxe_harvester_vip }}/v1/harvester/management.cattle.io.clusters"
+    validate_certs: no
+  register: cluster_info
+
+- name: Verify cluster roles
+  assert:
+    that:
+      - cluster_info.json.data[0].status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first == 'True'
+      - cluster_info.json.data[0].status.apiEndpoints | length > 0
+    fail_msg: "Cluster is not in a ready state or missing API endpoints"
+    success_msg: "Cluster is ready and has API endpoints configured"
+
+- name: Check Harvester services
+  command: "kubectl --kubeconfig {{ playbook_dir }}/harvester-kubeconfig get pods -n harvester-system --field-selector status.phase=Running"
+  register: harvester_pods
+  changed_when: false
+  failed_when: harvester_pods.rc != 0 or harvester_pods.stdout_lines | length < 5 # Adjust the number based on expected pods
+  delegate_to: localhost
+  run_once: true
+
+- name: Check cluster nodes
+  command: "kubectl --kubeconfig {{ playbook_dir }}/harvester-kubeconfig get nodes"
+  register: cluster_nodes
+  changed_when: false
+  failed_when: cluster_nodes.rc != 0 or cluster_nodes.stdout_lines | length < groups['idrac_hosts'] | length
+  delegate_to: localhost
+  run_once: true
+
+- name: Verify cluster functionality
+  block:
+    - name: Create test namespace
+      k8s:
+        name: test-namespace
+        kind: Namespace
+        kubeconfig: "{{ playbook_dir }}/harvester-kubeconfig"
+
+    - name: Deploy test pod
+      k8s:
+        definition:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: test-pod
+            namespace: test-namespace
+          spec:
+            containers:
+              - name: nginx
+                image: nginx
+        kubeconfig: "{{ playbook_dir }}/harvester-kubeconfig"
+
+    - name: Wait for test pod to be ready
+      k8s_info:
+        kind: Pod
+        name: test-pod
+        namespace: test-namespace
+        kubeconfig: "{{ playbook_dir }}/harvester-kubeconfig"
+      register: pod_info
+      until: pod_info.resources[0].status.phase == "Running"
+      retries: 10
+      delay: 10
+
+    - name: Clean up test resources
+      k8s:
+        name: test-namespace
+        kind: Namespace
+        state: absent
+        kubeconfig: "{{ playbook_dir }}/harvester-kubeconfig"
+  delegate_to: localhost
+  run_once: true
+
+- name: Generate installation report
+  template:
+    src: installation_report.j2
+    dest: "/var/log/harvester_installation_report_{{ inventory_hostname }}.txt"
+  delegate_to: localhost
+
+- name: Log cluster verification success
+  debug:
+    msg: "Harvester cluster verification completed successfully"
+  changed_when: true
+  notify: Log Cluster Verification

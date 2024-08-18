@@ -1,0 +1,27 @@
+---
+- name: Send email notification
+  community.general.mail:
+    host: "{{ smtp_server | default('localhost') }}"
+    port: "{{ smtp_port | default(25) }}"
+    username: "{{ smtp_username | default(omit) }}"
+    password: "{{ smtp_password | default(omit) }}"
+    to: "{{ admin_email }}"
+    subject: "{{ notification_subject }}"
+    body: "{{ notification_body }}"
+  delegate_to: localhost
+  when: admin_email is defined
+
+- name: Send Mattermost notification
+  uri:
+    url: "{{ mattermost_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: "{{ notification_subject }}\n\n{{ notification_body }}"
+      channel: "{{ mattermost_channel }}"
+  delegate_to: localhost
+  when: mattermost_webhook_url is defined
+
+- name: Log notification
+  ansible.builtin.debug:
+    msg: "Notification sent: {{ notification_subject }}"

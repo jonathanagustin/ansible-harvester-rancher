@@ -1,0 +1,59 @@
+---
+- name: Install Harvester on Dell Servers
+  hosts: idrac_hosts
+  gather_facts: false
+  become: false
+
+  pre_tasks:
+    - name: Ensure all required variables are set
+      assert:
+        that:
+          - idrac_username is defined
+          - idrac_password is defined
+          - harvester_password is defined
+          - ssh_public_key is defined
+          - cluster_token is defined
+        msg: "One or more required variables are not set. Please check your group_vars and inventory."
+
+    - name: Verify Dell server compatibility
+      dellemc.openmanage.idrac_info:
+        idrac_ip: "{{ ansible_host }}"
+        idrac_user: "{{ idrac_username }}"
+        idrac_password: "{{ idrac_password }}"
+      register: idrac_info
+      failed_when: "'Dell' not in idrac_info.system_info.manufacturer"
+
+  roles:
+    - role: harvester_install
+
+  post_tasks:
+    - name: Verify Harvester cluster
+      include_role:
+        name: harvester_install
+        tasks_from: verify_cluster.yml
+      when: harvester_mode == 'create'
+      run_once: true
+
+    - name: Generate installation report
+      template:
+        src: installation_report.j2
+        dest: "/tmp/harvester_installation_report_{{ inventory_hostname }}.txt"
+      delegate_to: localhost
+
+    - name: Send notification
+      include_role:
+        name: harvester_install
+        tasks_from: send_notification.yml
+      vars:
+        notification_subject: "Harvester installation on {{ inventory_hostname }} completed"
+        notification_body: "Harvester has been successfully installed on {{ inventory_hostname }}. Please check the installation report for details."
+      when: installation_completed | default(false)
+
+  handlers:
+    - name: Reboot server
+      dellemc.openmanage.idrac_power:
+        idrac_ip: "{{ ansible_host }}"
+        idrac_user: "{{ idrac_username }}"
+        idrac_password: "{{ idrac_password }}"
+        state: "reboot"
+      listen: "reboot_required"

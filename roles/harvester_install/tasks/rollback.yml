@@ -1,0 +1,178 @@
+---
+# roles/harvester_install/tasks/rollback.yml
+
+- name: Perform pre-rollback checks
+  block:
+    - name: Check iDRAC connectivity
+      dellemc.openmanage.idrac_info:
+        idrac_ip: "{{ inventory_hostname }}"
+        idrac_user: "{{ secrets.idrac_credentials.username }}"
+        idrac_password: "{{ secrets.idrac_credentials.password }}"
+      register: idrac_check
+      failed_when: idrac_check.failed
+      retries: 3
+      delay: 10
+
+    - name: Verify rollback is necessary
+      assert:
+        that: not installation_completed | default(false)
+        msg: "Rollback not necessary. Installation was marked as completed."
+
+  rescue:
+    - name: Log pre-rollback check failure
+      debug:
+        msg: "Pre-rollback checks failed. Manual intervention may be required."
+      failed_when: true
+
+- name: Reset BIOS to default settings
+  dellemc.openmanage.idrac_bios:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    attributes:
+      BootMode: "{{ original_boot_mode | default('Bios') }}"
+      BootSeqRetry: "Disabled"
+      FirstBootDevice: "{{ original_first_boot_device | default('HardDisk') }}"
+  register: bios_reset_result
+  retries: 3
+  delay: 30
+  until: bios_reset_result is success
+
+- name: Clear iDRAC job queue
+  dellemc.openmanage.idrac_job_queue:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    state: "clear"
+  register: job_queue_clear_result
+  retries: 3
+  delay: 30
+  until: job_queue_clear_result is success
+
+- name: Power off server
+  dellemc.openmanage.idrac_power:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    state: "off"
+  register: power_off_result
+  retries: 3
+  delay: 30
+  until: power_off_result is success
+
+- name: Remove PXE boot configuration
+  block:
+    - name: Remove DHCP reservation
+      community.general.dnsmasq_conf:
+        name: "pxe-{{ inventory_hostname }}"
+        state: absent
+      delegate_to: "{{ dhcp_server }}"
+
+    - name: Remove iPXE configuration file
+      ansible.builtin.file:
+        path: "{{ tftp_root }}/pxelinux.cfg/01-{{ hostvars[inventory_hostname]['ansible_default_ipv4']['macaddress'] | replace(':', '-') }}"
+        state: absent
+      delegate_to: "{{ tftp_server }}"
+
+  rescue:
+    - name: Log PXE removal failure
+      debug:
+        msg: "Failed to remove PXE configuration. Manual cleanup may be required."
+
+- name: Manage storage configuration
+  block:
+    - name: Get current storage configuration
+      dellemc.openmanage.idrac_storage_volume_info:
+        idrac_ip: "{{ inventory_hostname }}"
+        idrac_user: "{{ secrets.idrac_credentials.username }}"
+        idrac_password: "{{ secrets.idrac_credentials.password }}"
+      register: current_storage_info
+
+    - name: Remove Harvester partitions
+      dellemc.openmanage.idrac_storage_volume:
+        idrac_ip: "{{ inventory_hostname }}"
+        idrac_user: "{{ secrets.idrac_credentials.username }}"
+        idrac_password: "{{ secrets.idrac_credentials.password }}"
+        state: "absent"
+        volumes:
+          - controller: "{{ item.controller }}"
+            operation: "remove"
+            name: "{{ item.name }}"
+      loop: "{{ current_storage_info.storage_volumes | selectattr('name', 'match', '^harvester_.*') | list }}"
+      when: current_storage_info.storage_volumes | selectattr('name', 'match', '^harvester_.*') | list | length > 0
+
+    - name: Restore original storage configuration
+      dellemc.openmanage.idrac_storage_volume:
+        idrac_ip: "{{ inventory_hostname }}"
+        idrac_user: "{{ secrets.idrac_credentials.username }}"
+        idrac_password: "{{ secrets.idrac_credentials.password }}"
+        state: "present"
+        volumes: "{{ original_storage_config }}"
+      when: original_storage_config is defined
+
+  rescue:
+    - name: Log storage configuration failure
+      debug:
+        msg: "Failed to manage storage configuration. Manual intervention required."
+      failed_when: true
+
+- name: Reset iDRAC to default settings
+  dellemc.openmanage.idrac_reset:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    reset_type: "default"
+  register: idrac_reset_result
+  retries: 3
+  delay: 30
+  until: idrac_reset_result is success
+
+- name: Restore original network configuration
+  dellemc.openmanage.idrac_network:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    setup_idrac: "{{ original_network_config }}"
+  when: original_network_config is defined
+
+- name: Log rollback completion
+  debug:
+    msg: "Rollback completed for {{ inventory_hostname }} at {{ ansible_date_time.iso8601 }}"
+
+- name: Send notification of failed installation and rollback
+  mail:
+    to: "{{ admin_email }}"
+    subject: "Harvester installation failed on {{ inventory_hostname }} - Rollback completed"
+    body: |
+      The Harvester installation on {{ inventory_hostname }} has failed and a rollback has been performed.
+
+      Rollback actions taken:
+      - Pre-rollback checks performed
+      - BIOS reset to original or default settings
+      - iDRAC job queue cleared
+      - Server powered off
+      - PXE boot configuration removed
+      - Harvester partitions removed
+      - Original storage configuration restored (if applicable)
+      - iDRAC reset to default settings
+      - Original network configuration restored (if applicable)
+
+      Rollback completed at: {{ ansible_date_time.iso8601 }}
+
+      Please check the system and logs for more information. Manual verification and additional cleanup may be necessary.
+
+      Server Details:
+      - Hostname: {{ inventory_hostname }}
+      - Service Tag: {{ idrac_check.idrac_info.system_info.service_tag }}
+      - Model: {{ idrac_check.idrac_info.system_info.model }}
+      - iDRAC Version: {{ idrac_check.idrac_info.firmware_version }}
+
+      For any questions or concerns, please contact the infrastructure team.
+  delegate_to: localhost
+
+- name: Update inventory
+  add_host:
+    name: "{{ inventory_hostname }}"
+    groups: "rollback_completed"
+    ansible_host: "{{ ansible_host }}"
+  changed_when: true

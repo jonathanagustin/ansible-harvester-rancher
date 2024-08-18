@@ -1,0 +1,37 @@
+---
+- name: Check disk space
+  ansible.builtin.shell: df -h {{ pxe_harvester_osdisk }} | awk 'NR==2 {print $4}'
+  register: disk_space
+  changed_when: false
+  failed_when: disk_space.stdout|float < min_disk_space_gb
+
+- name: Check CPU count
+  ansible.builtin.shell: nproc
+  register: cpu_count
+  changed_when: false
+  failed_when: cpu_count.stdout|int < min_cpu_count
+
+- name: Check memory
+  ansible.builtin.shell: free -g | awk '/^Mem:/{print $2}'
+  register: memory_gb
+  changed_when: false
+  failed_when: memory_gb.stdout|int < min_memory_gb
+
+- name: Check network connectivity
+  ansible.builtin.wait_for:
+    host: "{{ item }}"
+    port: 443
+    timeout: 5
+  loop:
+    - "{{ gateway }}"
+    - "{{ dhcp_server }}"
+    - "{{ tftp_server }}"
+    - "{{ nginx_server }}"
+
+- name: Verify iDRAC version
+  dellemc.openmanage.idrac_firmware:
+    idrac_ip: "{{ ansible_host }}"
+    idrac_user: "{{ idrac_username }}"
+    idrac_password: "{{ idrac_password }}"
+  register: idrac_firmware
+  failed_when: idrac_firmware.firmware_version is version(dell_idrac_version_min, '<')

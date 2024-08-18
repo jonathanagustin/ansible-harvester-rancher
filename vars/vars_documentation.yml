@@ -1,0 +1,428 @@
+# ./harvester-install/vars_documentation.yml
+---
+# This file documents all variables used in the Harvester installation playbook
+
+# Harvester Version and Files
+pxe_harvester_version:
+  description: "Version of Harvester to be installed"
+  type: string
+  default: "v1.3.1"
+  example: "v1.3.1"
+
+harvester_iso_path:
+  description: "Local path to the Harvester ISO file"
+  type: string
+  default: null # Must be set by user
+  example: "/path/to/harvester.iso"
+
+pxe_iso_url:
+  description: "URL for the Harvester ISO"
+  type: string
+  default: "https://releases.rancher.com/harvester/v1.3.1/harvester-v1.3.1-amd64.iso"
+  example: "https://releases.rancher.com/harvester/v1.3.1/harvester-v1.3.1-amd64.iso"
+
+pxe_iso_checksum:
+  description: "Checksum for the Harvester ISO"
+  type: string
+  default: null # Must be set by user
+  example: "sha256:CHECKSUM_HERE"
+
+pxe_kernel_url:
+  description: "URL for the Harvester kernel"
+  type: string
+  default: "https://releases.rancher.com/harvester/v1.3.1/harvester-v1.3.1-vmlinuz-amd64"
+  example: "https://releases.rancher.com/harvester/v1.3.1/harvester-v1.3.1-vmlinuz-amd64"
+
+pxe_kernel_checksum:
+  description: "Checksum for the Harvester kernel"
+  type: string
+  default: null # Must be set by user
+  example: "sha256:CHECKSUM_HERE"
+
+pxe_initrd_url:
+  description: "URL for the Harvester initrd"
+  type: string
+  default: "https://releases.rancher.com/harvester/v1.3.1/harvester-v1.3.1-initrd-amd64"
+  example: "https://releases.rancher.com/harvester/v1.3.1/harvester-v1.3.1-initrd-amd64"
+
+pxe_initrd_checksum:
+  description: "Checksum for the Harvester initrd"
+  type: string
+  default: null # Must be set by user
+  example: "sha256:CHECKSUM_HERE"
+
+pxe_rootfs_url:
+  description: "URL for the Harvester rootfs"
+  type: string
+  default: "https://releases.rancher.com/harvester/v1.3.1/harvester-v1.3.1-rootfs-amd64.squashfs"
+  example: "https://releases.rancher.com/harvester/v1.3.1/harvester-v1.3.1-rootfs-amd64.squashfs"
+
+pxe_rootfs_checksum:
+  description: "Checksum for the Harvester rootfs"
+  type: string
+  default: null # Must be set by user
+  example: "sha256:CHECKSUM_HERE"
+
+# Network Configuration
+pxe_harvester_mgmt_interface:
+  description: "Network interface for Harvester management"
+  type: string
+  default: "eno1"
+  example: "eno2"
+
+pxe_harvester_vip:
+  description: "Virtual IP for the Harvester cluster"
+  type: string
+  default: null # Must be set by user
+  example: "10.0.20.20"
+
+pxe_harvester_vip_mac:
+  description: "MAC address associated with the virtual IP"
+  type: string
+  default: null # Must be set by user
+  example: "da:50:09:ec:51:83"
+
+netmask:
+  description: "Network mask for the Harvester network"
+  type: string
+  default: "255.255.255.0"
+  example: "255.255.255.0"
+
+gateway:
+  description: "Gateway IP address for the Harvester network"
+  type: string
+  default: null # Must be set by user
+  example: "192.168.1.1"
+
+dns_servers:
+  description: "Comma-separated list of DNS servers"
+  type: string
+  default: "8.8.8.8,8.8.4.4"
+  example: "8.8.8.8,8.8.4.4"
+
+ntp_servers:
+  description: "Comma-separated list of NTP servers"
+  type: string
+  default: "0.pool.ntp.org,1.pool.ntp.org"
+  example: "0.suse.pool.ntp.org,1.suse.pool.ntp.org"
+
+harvester_network_interface:
+  description: "Network interface used by Harvester"
+  type: string
+  default: "ens192"
+  example: "ens192"
+
+# Storage Configuration
+pxe_harvester_osdisk:
+  description: "Disk to be used for Harvester OS installation"
+  type: string
+  default: "/dev/sda"
+  example: "/dev/disk/by-id/ata-KINGSTON_SA400S37240G_50026B7783F66D6B"
+
+pxe_harvester_datadisk:
+  description: "Disk to be used for Harvester data storage"
+  type: string
+  default: "/dev/sdb"
+  example: "/dev/disk/by-id/nvme-KINGSTON_SNV2S1000G_50026B77859C17C2"
+
+# Authentication and Security
+ssh_public_key:
+  description: "SSH public key for Harvester nodes"
+  type: string
+  default: null # Must be set by user
+  example: "ssh-rsa AAAAB... your_public_key"
+
+cluster_token:
+  description: "Token for Harvester cluster authentication"
+  type: string
+  default: null # Must be set by user
+  example: "your_cluster_token"
+
+harvester_password:
+  description: "Password for Harvester OS"
+  type: string
+  default: null # Must be set by user
+  example: "password123"
+
+# iDRAC Configuration
+dell_idrac_version_min:
+  description: "Minimum required iDRAC firmware version"
+  type: string
+  default: "4.40.00.00"
+  example: "4.40.00.00"
+
+dell_bios_settings:
+  description: "BIOS settings for Dell servers"
+  type: list
+  default:
+    - name: "ProcVirtualization"
+      value: "Enabled"
+    - name: "SriovGlobalEnable"
+      value: "Enabled"
+  example:
+    - name: "ProcVirtualization"
+      value: "Enabled"
+    - name: "SriovGlobalEnable"
+      value: "Enabled"
+
+dell_power_profile:
+  description: "Power profile for Dell servers"
+  type: string
+  default: "MaxPerformance"
+  example: "MaxPerformance"
+
+idrac_new_ip:
+  description: "New IP address for iDRAC if changing"
+  type: string
+  default: null # Must be set by user
+  example: "192.168.1.101"
+
+idrac_netmask:
+  description: "Netmask for iDRAC network configuration"
+  type: string
+  default: "255.255.255.0"
+  example: "255.255.255.0"
+
+idrac_gateway:
+  description: "Gateway for iDRAC network configuration"
+  type: string
+  default: null # Must be set by user
+  example: "192.168.1.1"
+
+idrac_users:
+  description: "List of iDRAC users to configure"
+  type: list
+  default: []
+  example:
+    - username: "admin"
+      password: "password123"
+      privilege: "Administrator"
+
+idrac_username:
+  description: "Username for iDRAC access"
+  type: string
+  default: "root"
+  example: "root"
+
+idrac_password:
+  description: "Password for iDRAC access"
+  type: string
+  default: null # Must be set by user
+  example: "calvin"
+
+# RAID Configuration
+raid_controller_id:
+  description: "ID of the RAID controller to use"
+  type: string
+  default: "RAID.Integrated.1-1"
+  example: "RAID.Integrated.1-1"
+
+raid_capacity_gb:
+  description: "Capacity of the RAID volume in GB"
+  type: float
+  default: 558.375
+  example: 558.375
+
+raid_drives:
+  description: "List of drives to use for RAID configuration"
+  type: list
+  default: []
+  example:
+    - "Disk.Bay.0:Enclosure.Internal.0-1:RAID.Integrated.1-1"
+    - "Disk.Bay.1:Enclosure.Internal.0-1:RAID.Integrated.1-1"
+
+# Installation and Rollback
+original_boot_mode:
+  description: "Original boot mode of the server before installation"
+  type: string
+  default: "Bios"
+  example: "Bios"
+
+original_first_boot_device:
+  description: "Original first boot device before installation"
+  type: string
+  default: "HardDisk"
+  example: "HardDisk"
+
+original_storage_config:
+  description: "Original storage configuration before installation"
+  type: dict
+  default: {}
+  example: {}
+
+original_network_config:
+  description: "Original network configuration before installation"
+  type: dict
+  default: {}
+  example: {}
+
+# System Requirements
+min_disk_space:
+  description: "Minimum required disk space in MB"
+  type: integer
+  default: 100000
+  example: 100000
+
+min_network_bandwidth:
+  description: "Minimum required network bandwidth in Mbps"
+  type: integer
+  default: 1000
+  example: 1000
+
+max_network_latency:
+  description: "Maximum acceptable network latency in ms"
+  type: integer
+  default: 20
+  example: 20
+
+# Timeouts and Retry Counts
+api_check_retries:
+  description: "Number of retries for API availability check"
+  type: integer
+  default: 60
+  example: 60
+
+api_check_delay:
+  description: "Delay between API availability check retries (in seconds)"
+  type: integer
+  default: 10
+  example: 10
+
+installation_timeout:
+  description: "Timeout for the entire installation process (in seconds)"
+  type: integer
+  default: 3600
+  example: 3600
+
+network_check_timeout:
+  description: "Timeout for network connectivity checks (in seconds)"
+  type: integer
+  default: 60
+  example: 60
+
+# Cleanup and Rollback
+cleanup_temp_files:
+  description: "Whether to clean up temporary files after installation"
+  type: boolean
+  default: true
+  example: true
+
+cleanup_containers:
+  description: "Whether to clean up containers used for PXE boot"
+  type: boolean
+  default: true
+  example: true
+
+cleanup_ipxe:
+  description: "Whether to clean up iPXE files"
+  type: boolean
+  default: true
+  example: true
+
+reset_idrac_boot:
+  description: "Whether to reset iDRAC to default network boot settings"
+  type: boolean
+  default: true
+  example: true
+
+# Additional Configuration Options
+configure_additional_storage:
+  description: "Whether to configure additional storage (Longhorn)"
+  type: boolean
+  default: false
+  example: false
+
+configure_additional_network:
+  description: "Whether to configure additional networking"
+  type: boolean
+  default: false
+  example: false
+
+additional_network_cidr:
+  description: "CIDR for additional network configuration"
+  type: string
+  default: null # Must be set by user if configure_additional_network is true
+  example: "10.0.0.0/24"
+
+apply_custom_manifests:
+  description: "Whether to apply custom Kubernetes manifests"
+  type: boolean
+  default: false
+  example: false
+
+enable_monitoring:
+  description: "Whether to enable monitoring (Prometheus)"
+  type: boolean
+  default: false
+  example: false
+
+# DHCP and TFTP Server Configuration
+dhcp_server:
+  description: "IP address or hostname of the DHCP server"
+  type: string
+  default: null # Must be set by user
+  example: "192.168.1.10"
+
+tftp_server:
+  description: "IP address or hostname of the TFTP server"
+  type: string
+  default: null # Must be set by user
+  example: "192.168.1.10"
+
+tftp_root:
+  description: "Root directory for TFTP files"
+  type: string
+  default: "/var/lib/tftpboot"
+  example: "/var/lib/tftpboot"
+
+# Logging and Reporting
+log_share_user:
+  description: "Username for accessing the log share"
+  type: string
+  default: null # Must be set by user if log sharing is enabled
+  example: "loguser"
+
+log_share_password:
+  description: "Password for accessing the log share"
+  type: string
+  default: null # Must be set by user if log sharing is enabled
+  example: "logpassword"
+
+admin_email:
+  description: "Email address for admin notifications"
+  type: string
+  default: null # Must be set by user
+  example: "admin@example.com"
+
+monitoring_system_url:
+  description: "URL for the monitoring system API"
+  type: string
+  default: null # Must be set by user if monitoring is enabled
+  example: "http://monitoring.example.com/api"
+
+# Slack Notification
+slack_token:
+  description: "Token for Slack notifications"
+  type: string
+  default: null # Must be set by user if Slack notifications are enabled
+  example: "xoxb-your-token-here"
+
+# Role and Playbook Configuration
+role_path:
+  description: "Path to the current role"
+  type: string
+  default: "{{ playbook_dir }}/roles/harvester_install"
+  example: "{{ playbook_dir }}/roles/harvester_install"
+
+# Installation Status
+installation_completed:
+  description: "Flag indicating if installation was completed successfully"
+  type: boolean
+  default: false
+  example: true
+
+installation_started:
+  description: "Flag indicating if installation has started"
+  type: boolean
+  default: false
+  example: true

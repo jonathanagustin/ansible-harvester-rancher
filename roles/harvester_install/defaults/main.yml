@@ -1,0 +1,80 @@
+---
+# defaults file for harvester_install
+
+# Harvester Version
+pxe_harvester_version: "v1.3.1"
+
+# Network Configuration
+pxe_harvester_mgmt_interface: "eno1"
+pxe_harvester_vip: "" # Must be set by user
+netmask: "255.255.255.0"
+gateway: "" # Must be set by user
+dns_servers: "8.8.8.8,8.8.4.4"
+ntp_servers: "0.pool.ntp.org,1.pool.ntp.org"
+
+# Storage Configuration
+pxe_harvester_osdisk: "/dev/sda"
+pxe_harvester_datadisk: "/dev/sdb"
+
+# iDRAC Configuration
+dell_idrac_version_min: "4.40.00.00"
+dell_power_profile: "MaxPerformance"
+
+# Installation Files
+pxe_iso_url: "https://releases.rancher.com/harvester/{{ pxe_harvester_version }}/harvester-{{ pxe_harvester_version }}-amd64.iso"
+pxe_kernel_url: "https://releases.rancher.com/harvester/{{ pxe_harvester_version }}/harvester-{{ pxe_harvester_version }}-vmlinuz-amd64"
+pxe_initrd_url: "https://releases.rancher.com/harvester/{{ pxe_harvester_version }}/harvester-{{ pxe_harvester_version }}-initrd-amd64"
+pxe_rootfs_url: "https://releases.rancher.com/harvester/{{ pxe_harvester_version }}/harvester-{{ pxe_harvester_version }}-rootfs-amd64.squashfs"
+
+# Timeouts and Retry Counts
+api_check_retries: 60
+api_check_delay: 10
+installation_timeout: 3600
+network_check_timeout: 60
+
+# System Requirements
+min_cpu_count: 4
+min_memory_gb: 32
+min_disk_space_gb: 120
+
+# Cleanup Configuration
+cleanup_temp_files: true
+
+# Additional Configuration Options
+configure_additional_storage: false
+configure_additional_network: false
+apply_custom_manifests: false
+enable_monitoring: false
+enable_backup: false
+
+# DHCP and TFTP Server Configuration
+dhcp_server: "" # Must be set by user
+tftp_server: "" # Must be set by user
+tftp_root: "/var/lib/tftpboot"
+
+# Notification Configuration
+admin_email: "" # Must be set by user
+monitoring_system_url: "" # Must be set by user if monitoring is enabled
+mattermost_webhook_url: "" # Must be set by user
+mattermost_channel: "Harvester Installations"
+
+# RAID Configuration
+raid_controller_id: "RAID.Integrated.1-1"
+raid_capacity_gb: 558.375
+raid_drives: [] # Must be set by user if configuring RAID
+
+# Dell BIOS Settings
+dell_bios_settings:
+  - name: "ProcVirtualization"
+    value: "Enabled"
+  - name: "SriovGlobalEnable"
+    value: "Enabled"
+  - name: "SystemProfile"
+    value: "PerfOptimized"
+
+# Installation Status
+installation_completed: false
+installation_started: false
+
+# Role Path
+role_path: "{{ playbook_dir }}/roles/harvester_install"

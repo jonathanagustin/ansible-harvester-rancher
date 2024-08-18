@@ -1,0 +1,124 @@
+---
+# roles/harvester_install/tasks/idrac_configuration.yml
+
+- name: Configure BIOS settings
+  dellemc.openmanage.idrac_bios:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    attributes: "{{ dell_bios_settings }}"
+  register: bios_config
+  tags:
+    - idrac
+    - bios
+
+- name: Configure RAID (if needed)
+  dellemc.openmanage.idrac_storage_volume:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    state: "present"
+    controller_id: "{{ raid_controller_id }}"
+    volumes:
+      - name: "RAID1_OS"
+        raid_type: "RAID1"
+        span_depth: 1
+        span_length: 2
+        number_dedicated_hot_spare: 0
+        disk_cache_policy: "Default"
+        write_cache_policy: "WriteBackForce"
+        read_cache_policy: "ReadAhead"
+        stripe_size: 128
+        capacity: "{{ raid_capacity_gb }}"
+        drives: "{{ raid_drives }}"
+  when: configure_raid | default(false)
+  tags:
+    - idrac
+    - raid
+
+- name: Configure iDRAC network settings
+  dellemc.openmanage.idrac_network:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    setup_idrac:
+      enable_nic: true
+      nic_selection: "Dedicated"
+      auto_negotiate: true
+      ip_address: "{{ idrac_new_ip | default(inventory_hostname) }}"
+      enable_dhcp: false
+      netmask: "{{ idrac_netmask | default('255.255.255.0') }}"
+      gateway: "{{ idrac_gateway }}"
+  when: configure_idrac_network | default(false)
+  tags:
+    - idrac
+    - network
+
+- name: Configure iDRAC users
+  dellemc.openmanage.idrac_user:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    state: "present"
+    user_name: "{{ item.username }}"
+    user_password: "{{ item.password }}"
+    privilege: "{{ item.privilege }}"
+  loop: "{{ idrac_users | default([]) }}"
+  when: configure_idrac_users | default(false)
+  tags:
+    - idrac
+    - users
+
+- name: Configure PXE boot settings
+  dellemc.openmanage.idrac_bios:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    attributes:
+      BootMode: "Bios"
+      BootSeqRetry: "Enabled"
+      FirstBootDevice: "PXE"
+  tags:
+    - idrac
+    - pxe
+    - boot
+
+- name: Set one-time PXE boot
+  dellemc.openmanage.idrac_boot:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    boot_device: "PXE"
+    boot_mode: "OneTime"
+  tags:
+    - idrac
+    - pxe
+    - boot
+
+- name: Reboot server if changes were made
+  dellemc.openmanage.idrac_power:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ secrets.idrac_credentials.username }}"
+    idrac_password: "{{ secrets.idrac_credentials.password }}"
+    state: "reboot"
+  when: bios_config.changed or configure_raid|default(false) or configure_idrac_network|default(false) or configure_idrac_users|default(false)
+  tags:
+    - idrac
+    - reboot
+
+- name: Wait for iDRAC to be accessible after reboot
+  ansible.builtin.wait_for:
+    host: "{{ inventory_hostname }}"
+    port: 443
+    delay: 30
+    timeout: 300
+  when: bios_config.changed or configure_raid|default(false) or configure_idrac_network|default(false) or configure_idrac_users|default(false)
+  tags:
+    - idrac
+    - reboot
+
+- name: Log iDRAC configuration completion
+  ansible.builtin.debug:
+    msg: "iDRAC configuration completed successfully for {{ inventory_hostname }}"
+  changed_when: true
+  notify: Log iDRAC Configuration
