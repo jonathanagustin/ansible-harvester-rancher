@@ -41,6 +41,4 @@
 - name: Log cleanup completion
   ansible.builtin.debug:
     msg: "Cleanup completed for Harvester installation on {{ inventory_hostname }}"
-# Note: Add any additional cleanup tasks specific to your environment
-# For example, you might need to clean up network configurations,
-# remove temporary user accounts, etc.
+
