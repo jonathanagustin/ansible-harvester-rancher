@@ -1,0 +1,137 @@
+---
+# ./roles/harvester_install/handlers/main.yml
+
+# Handlers for Harvester Installation
+#
+# This file contains handlers that can be triggered by tasks in the Harvester installation playbook.
+# Handlers are only run if they are notified by a task, and they run at the end of the play after all tasks are complete.
+# They are useful for actions that may need to happen only once, regardless of how many times they are notified.
+#
+# Usage:
+#   To use these handlers, tasks should include a 'notify' statement. For example:
+#   - name: Some task
+#     ansible.builtin.command: do_something
+#     notify: Restart dnsmasq service
+
+# Restart the dnsmasq service
+# This handler is useful when the dnsmasq configuration has been changed
+- name: Restart dnsmasq service
+  ansible.builtin.systemd:
+    name: dnsmasq
+    state: restarted
+  become: true
+  listen: "restart dnsmasq"
+
+# Restart the nginx service
+# This handler is useful when Harvester files served by nginx have been updated
+- name: Restart nginx service
+  ansible.builtin.systemd:
+    name: nginx
+    state: restarted
+  become: true
+  listen: "restart nginx"
+
+# Log successful installation
+# This handler creates a log entry when Harvester is successfully installed
+- name: Log successful installation
+  ansible.builtin.lineinfile:
+    path: "/var/log/harvester_installations.log"
+    line: "{{ ansible_date_time.iso8601 }} - Harvester successfully installed on {{ inventory_hostname }}"
+    create: yes
+  delegate_to: localhost
+  become: true
+  listen: "log installation success"
+
+# Send email notification
+# This handler sends an email when Harvester installation is complete
+- name: Send email notification
+  ansible.builtin.mail:
+    to: "{{ admin_email }}"
+    subject: "Harvester installation completed on {{ inventory_hostname }}"
+    body: "Harvester has been successfully installed on {{ inventory_hostname }} at {{ ansible_date_time.iso8601 }}"
+  delegate_to: localhost
+  listen: "send email notification"
+
+# Update monitoring system
+# This handler updates an external monitoring system about the installation status
+- name: Update monitoring system
+  ansible.builtin.uri:
+    url: "{{ monitoring_system_url }}/api/update"
+    method: POST
+    body_format: json
+    body:
+      host: "{{ inventory_hostname }}"
+      status: "Harvester installed"
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+  delegate_to: localhost
+  listen: "update monitoring"
+
+# Reboot server
+# This handler reboots the server, which may be necessary after certain configuration changes
+- name: Reboot server
+  ansible.builtin.reboot:
+    reboot_timeout: 600
+  become: true
+  listen: "reboot server"
+
+# Cleanup installation files
+# This handler removes temporary files used during the installation process
+- name: Cleanup installation files
+  ansible.builtin.file:
+    path: "{{ role_temp_dir }}"
+    state: absent
+  become: true
+  listen: "cleanup files"
+
+# Refresh inventory
+# This handler refreshes the Ansible inventory to reflect any changes made during installation
+- name: Refresh inventory
+  ansible.builtin.meta: refresh_inventory
+  listen: "refresh inventory"
+
+# Log installation failure
+# This handler logs information about failed installations
+- name: Log installation failure
+  ansible.builtin.lineinfile:
+    path: "/var/log/harvester_installation_failures.log"
+    line: "{{ ansible_date_time.iso8601 }} - Harvester installation failed on {{ inventory_hostname }} - Error: {{ installation_error | default('Unknown error') }}"
+    create: yes
+  delegate_to: localhost
+  become: true
+  listen: "log installation failure"
+
+# Notify Slack channel
+# This handler sends a message to a Slack channel about the installation status
+- name: Notify Slack
+  community.general.slack:
+    token: "{{ slack_token }}"
+    msg: "Harvester installation on {{ inventory_hostname }} completed with status: {{ installation_status }}"
+    channel: "#server-installations"
+  delegate_to: localhost
+  listen: "notify slack"
+#
+# To use these handlers in your tasks, add a notify statement to the relevant tasks.
+#
+# For example:
+#
+# - name: Install Harvester
+#   ansible.builtin.command: some_installation_command
+#   register: install_result
+#   notify:
+#     - "log installation success"
+#     - "send email notification"
+#     - "update monitoring"
+#     - "cleanup files"
+#     - "refresh inventory"
+#     - "notify slack"
+#   when: install_result is success
+
+# - name: Handle installation failure
+#   ansible.builtin.fail:
+#     msg: "Installation failed"
+#   notify:
+#     - "log installation failure"
+#     - "send email notification"
+#     - "update monitoring"
+#     - "notify slack"
+#   when: install_result is failed

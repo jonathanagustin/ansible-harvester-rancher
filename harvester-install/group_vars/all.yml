@@ -1,0 +1,126 @@
+---
+# group_vars/all.yml
+#
+# This file contains variables that apply to all hosts in the inventory.
+# It defines global settings for the Harvester installation process.
+
+# ---------------------------------------------------------------------------- #
+# PXE and Harvester configuration
+# ---------------------------------------------------------------------------- #
+# These variables define the Harvester version, network interfaces, and storage devices
+
+# Harvester version to be installed
+pxe_harvester_version: "v1.3.1"
+
+# Network interface for Harvester management
+pxe_harvester_mgmt_interface: "{{ dell_mgmt_interface | default('eno1') }}"
+
+# Virtual IP for the Harvester cluster
+pxe_harvester_vip: "10.0.20.20"
+
+# MAC address associated with the virtual IP
+pxe_harvester_vip_mac: "{{ dell_vip_mac | default('00:11:22:33:44:55') }}"
+
+# Disk to be used for Harvester OS installation
+pxe_harvester_osdisk: "{{ dell_os_disk | default('/dev/sda') }}"
+
+# Disk to be used for Harvester data storage
+pxe_harvester_datadisk: "{{ dell_data_disk | default('/dev/sdb') }}"
+
+# ---------------------------------------------------------------------------- #
+# URLs and checksums for Harvester files
+# ---------------------------------------------------------------------------- #
+# Ensure these are updated to the correct version and checksums before running the playbook
+
+pxe_iso_url: "https://releases.rancher.com/harvester/{{ pxe_harvester_version }}/harvester-{{ pxe_harvester_version }}-amd64.iso"
+pxe_iso_checksum: "sha256:CHECKSUM_HERE"
+pxe_kernel_url: "https://releases.rancher.com/harvester/{{ pxe_harvester_version }}/harvester-{{ pxe_harvester_version }}-vmlinuz-amd64"
+pxe_kernel_checksum: "sha256:CHECKSUM_HERE"
+pxe_initrd_url: "https://releases.rancher.com/harvester/{{ pxe_harvester_version }}/harvester-{{ pxe_harvester_version }}-initrd-amd64"
+pxe_initrd_checksum: "sha256:CHECKSUM_HERE"
+pxe_rootfs_url: "https://releases.rancher.com/harvester/{{ pxe_harvester_version }}/harvester-{{ pxe_harvester_version }}-rootfs-amd64.squashfs"
+pxe_rootfs_checksum: "sha256:CHECKSUM_HERE"
+
+# ---------------------------------------------------------------------------- #
+# Network configuration
+# ---------------------------------------------------------------------------- #
+# Adjust these settings to match your network environment
+
+netmask: "255.255.255.0"
+gateway: "192.168.1.1"
+dns_servers: "8.8.8.8,8.8.4.4"
+ntp_servers: "0.suse.pool.ntp.org,1.suse.pool.ntp.org"
+
+# ---------------------------------------------------------------------------- #
+# SSH and authentication settings
+# ---------------------------------------------------------------------------- #
+# Replace with your actual SSH public key and cluster token
+
+ssh_public_key: "ssh-rsa AAAAB... your_public_key"
+cluster_token: "your_cluster_token"
+
+# ---------------------------------------------------------------------------- #
+# Dell-specific configurations
+# ---------------------------------------------------------------------------- #
+# These settings optimize Dell servers for Harvester
+
+dell_idrac_version_min: "4.40.00.00"
+dell_bios_settings:
+  - name: "ProcVirtualization"
+    value: "Enabled"
+  - name: "SriovGlobalEnable"
+    value: "Enabled"
+  - name: "SystemProfile"
+    value: "PerfOptimized"
+
+# ---------------------------------------------------------------------------- #
+# Cleanup and logging configuration
+# ---------------------------------------------------------------------------- #
+# Adjust these settings based on your preferences and requirements
+
+cleanup_temp_files: true
+log_level: "INFO"
+log_file: "/var/log/harvester_install.log"
+
+# ---------------------------------------------------------------------------- #
+# Performance tuning
+# ---------------------------------------------------------------------------- #
+# These settings can be adjusted based on your performance needs
+
+dell_power_profile: "MaxPerformance"
+dell_fan_speed_offset: "High"
+
+# ---------------------------------------------------------------------------- #
+# Security settings
+# ---------------------------------------------------------------------------- #
+# WARNING: Set idrac_ssl_verify to true in production environments
+
+idrac_ssl_verify: false
+
+# ---------------------------------------------------------------------------- #
+# Timeouts and retry counts
+# ---------------------------------------------------------------------------- #
+# Adjust these values based on your network conditions and server performance
+
+api_check_retries: 60
+api_check_delay: 10
+installation_timeout: 3600
+network_check_timeout: 60
+
+# ---------------------------------------------------------------------------- #
+# System requirements
+# ---------------------------------------------------------------------------- #
+# Minimum requirements for Harvester installation
+
+min_cpu_count: 4
+min_memory_gb: 32
+min_disk_space_gb: 120
+
+# ---------------------------------------------------------------------------- #
+# Monitoring and notification settings
+# ---------------------------------------------------------------------------- #
+# Configure these for integration with your monitoring systems
+
+monitoring_system_url: "http://monitoring.example.com"
+admin_email: "admin@example.com"
+slack_webhook_url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"

@@ -1,0 +1,41 @@
+---
+# Error handling and rollback procedures
+
+- name: Log error details
+  ansible.builtin.debug:
+    msg: "Installation failed on {{ inventory_hostname }}. Error: {{ error_message }}"
+
+- name: Capture iDRAC logs
+  dellemc.openmanage.idrac_logs:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ idrac_creds.username }}"
+    idrac_password: "{{ idrac_creds.password }}"
+    log_type: sel
+    share_name: "/var/log/idrac_logs"
+    share_user: "{{ log_share_user }}"
+    share_password: "{{ log_share_password }}"
+  when: installation_failed | default(false)
+
+- name: Reset iDRAC to default boot settings
+  dellemc.openmanage.idrac_bios:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ idrac_creds.username }}"
+    idrac_password: "{{ idrac_creds.password }}"
+    attributes:
+      BootMode: "Bios"
+      BootSeqRetry: "Disabled"
+      FirstBootDevice: "HardDisk"
+
+- name: Power off server
+  dellemc.openmanage.idrac_power:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ idrac_creds.username }}"
+    idrac_password: "{{ idrac_creds.password }}"
+    state: "off"
+
+- name: Notify administrators
+  ansible.builtin.mail:
+    to: "admin@example.com"
+    subject: "Harvester installation failed on {{ inventory_hostname }}"
+    body: "The Harvester installation process failed. Check the logs and iDRAC console for more information."
+  delegate_to: localhost

@@ -1,0 +1,101 @@
+---
+# roles/harvester_install/tasks/idrac_configuration.yml
+
+# Change iDRAC password
+- name: Change iDRAC password
+  dellemc.openmanage.idrac_user:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ idrac_credentials.username }}"
+    idrac_password: "{{ idrac_credentials.password }}"
+    new_user_name: "{{ idrac_credentials.username }}"
+    new_password: "{{ idrac_new_password }}"
+    user_id: 2 # Typically, user ID 2 is the root/admin user
+  when: idrac_change_password | default(false)
+  tags:
+    - idrac
+    - security
+
+# Configure RAID
+- name: Configure RAID
+  dellemc.openmanage.idrac_storage_volume:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ idrac_credentials.username }}"
+    idrac_password: "{{ idrac_credentials.password }}"
+    state: "present"
+    controller_id: "RAID.Integrated.1-1" # Adjust this to match your hardware
+    volumes:
+      - name: "RAID1_OS"
+        raid_type: "RAID1"
+        span_depth: 1
+        span_length: 2
+        number_dedicated_hot_spare: 0
+        disk_cache_policy: "Default"
+        write_cache_policy: "WriteBackForce"
+        read_cache_policy: "ReadAhead"
+        stripe_size: 128
+        capacity: 558.375
+        drives:
+          - Disk.Bay.0:Enclosure.Internal.0-1:RAID.Integrated.1-1
+          - Disk.Bay.1:Enclosure.Internal.0-1:RAID.Integrated.1-1
+  when: configure_raid | default(false)
+  tags:
+    - idrac
+    - raid
+
+# Set iDRAC network settings
+- name: Configure iDRAC network
+  dellemc.openmanage.idrac_network:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ idrac_credentials.username }}"
+    idrac_password: "{{ idrac_credentials.password }}"
+    setup_idrac:
+      enable_nic: true
+      nic_selection: "Dedicated"
+      auto_negotiate: true
+      ip_address: "{{ idrac_new_ip | default(inventory_hostname) }}"
+      enable_dhcp: false
+      netmask: "{{ idrac_netmask | default('255.255.255.0') }}"
+      gateway: "{{ idrac_gateway }}"
+  when: configure_idrac_network | default(false)
+  tags:
+    - idrac
+    - network
+
+# Configure iDRAC users
+- name: Configure iDRAC users
+  dellemc.openmanage.idrac_user:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ idrac_credentials.username }}"
+    idrac_password: "{{ idrac_credentials.password }}"
+    state: "present"
+    user_name: "{{ item.username }}"
+    user_password: "{{ item.password }}"
+    privilege: "{{ item.privilege }}"
+  loop: "{{ idrac_users | default([]) }}"
+  when: configure_idrac_users | default(false)
+  tags:
+    - idrac
+    - users
+
+# Configure BIOS settings
+- name: Configure BIOS settings
+  dellemc.openmanage.idrac_bios:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ idrac_credentials.username }}"
+    idrac_password: "{{ idrac_credentials.password }}"
+    attributes: "{{ dell_bios_settings | items2dict(key_name='name', value_name='value') }}"
+  tags:
+    - idrac
+    - bios
+
+# Reboot server if any changes were made
+- name: Reboot server if changes were made
+  dellemc.openmanage.idrac_power:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ idrac_credentials.username }}"
+    idrac_password: "{{ idrac_credentials.password }}"
+    state: "reboot"
+  when: configure_raid|default(false) or configure_idrac_network|default(false) or configure_idrac_users|default(false)
+  tags:
+    - idrac
+    - reboot

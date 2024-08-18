@@ -1,0 +1,111 @@
+---
+# Wait for the Harvester API to become available
+# This ensures that the Harvester cluster is up and running before proceeding
+- name: Wait for Harvester API to be available
+  uri:
+    url: "https://{{ cluster_vip }}/v1-harvester/version"
+    validate_certs: no # Disable SSL certificate validation
+  register: result
+  until: result.status == 200 # Keep trying until we get a successful HTTP response
+  retries: 60 # Retry up to 60 times
+  delay: 10 # Wait 10 seconds between retries
+
+# Check the overall health of the Harvester cluster
+# This verifies that the cluster is in a healthy state
+- name: Verify Harvester cluster health
+  uri:
+    url: "https://{{ cluster_vip }}/v1-harvester/healthz"
+    validate_certs: no
+  register: health_check
+  failed_when: health_check.json.status != "OK" # Fail if the cluster health is not "OK"
+
+# Retrieve the list of nodes in the Harvester cluster
+# This information will be used to verify that all expected nodes are present
+- name: Get Harvester node list
+  uri:
+    url: "https://{{ cluster_vip }}/v1/harvester/nodes"
+    validate_certs: no
+  register: node_list
+
+# Ensure that all expected nodes are present in the cluster
+# This compares the number of nodes in the cluster to the number of hosts in our inventory
+- name: Verify all nodes are present
+  assert:
+    that:
+      - node_list.json | length == groups['idrac_hosts'] | length
+    fail_msg: "Not all nodes are present in the Harvester cluster"
+    success_msg: "All nodes are present in the Harvester cluster"
+
+# Check the status of each individual node in the cluster
+# This ensures that each node is in a 'Ready' state
+- name: Check each node's status
+  uri:
+    url: "https://{{ cluster_vip }}/v1/harvester/nodes/{{ item }}"
+    validate_certs: no
+  register: node_status
+  failed_when: node_status.json.status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first != 'True'
+  loop: "{{ groups['idrac_hosts'] }}" # Perform this check for each host in our inventory
+
+# Verify the status of Longhorn, the storage system used by Harvester
+# This ensures that the storage system is properly set up and functioning
+- name: Verify Longhorn status
+  uri:
+    url: "https://{{ cluster_vip }}/v1/harvester/longhornvolumes"
+    validate_certs: no
+  register: longhorn_status
+  failed_when: longhorn_status.json | selectattr('status.state', 'equalto', 'attached') | list | length == 0
+  # Fail if there are no volumes in the 'attached' state, indicating potential storage issues
+
+# Add more detailed checks for Longhorn volumes
+- name: Get Longhorn volume details
+  uri:
+    url: "https://{{ cluster_vip }}/v1/longhorn/volumes"
+    validate_certs: no
+  register: longhorn_volumes
+
+- name: Verify Longhorn volume health
+  assert:
+    that:
+      - longhorn_volumes.json | selectattr('state', 'equalto', 'attached') | list | length > 0
+      - longhorn_volumes.json | selectattr('robustness', 'equalto', 'healthy') | list | length == longhorn_volumes.json | length
+    fail_msg: "One or more Longhorn volumes are not healthy or attached"
+    success_msg: "All Longhorn volumes are healthy and attached"
+
+# Add a task to check cluster nodes' roles
+- name: Check cluster nodes' roles
+  uri:
+    url: "https://{{ cluster_vip }}/v1/harvester/management.cattle.io.clusters"
+    validate_certs: no
+  register: cluster_info
+
+- name: Verify cluster roles
+  assert:
+    that:
+      - cluster_info.json.data[0].status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first == 'True'
+      - cluster_info.json.data[0].status.apiEndpoints | length > 0
+    fail_msg: "Cluster is not in a ready state or missing API endpoints"
+    success_msg: "Cluster is ready and has API endpoints configured"
+
+# Verify Harvester services are running
+- name: Check Harvester services
+  ansible.builtin.command: "kubectl get pods -n harvester-system --field-selector status.phase=Running"
+  register: harvester_pods
+  delegate_to: localhost
+  run_once: true
+  changed_when: false
+  failed_when: harvester_pods.rc != 0 or harvester_pods.stdout_lines | length < 5 # Adjust the number based on expected pods
+
+# Verify cluster formation (for multi-node setups)
+- name: Check cluster nodes
+  ansible.builtin.command: "kubectl get nodes"
+  register: cluster_nodes
+  delegate_to: localhost
+  run_once: true
+  changed_when: false
+  failed_when: cluster_nodes.rc != 0 or cluster_nodes.stdout_lines | length < groups['idrac_hosts'] | length
+
+- name: Generate installation report
+  template:
+    src: installation_report.j2
+    dest: "/var/log/harvester_installation_report_{{ inventory_hostname }}.txt"
+  delegate_to: localhost

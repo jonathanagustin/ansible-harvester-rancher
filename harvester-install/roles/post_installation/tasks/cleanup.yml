@@ -1,0 +1,46 @@
+---
+# Cleanup tasks for Harvester installation
+
+- name: Remove temporary installation files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ role_path }}/files/data/harvester.iso"
+    - "{{ role_path }}/files/data/harvester-vmlinuz"
+    - "{{ role_path }}/files/data/harvester-initrd"
+    - "{{ role_path }}/files/data/harvester-rootfs"
+  when: cleanup_temp_files | default(true)
+
+- name: Stop and remove PXE boot containers
+  containers.podman.podman_container:
+    name: "{{ item }}"
+    state: absent
+  loop:
+    - "dnsmasq"
+    - "nginx"
+  when: cleanup_containers | default(true)
+
+- name: Remove iPXE files
+  ansible.builtin.file:
+    path: "{{ role_path }}/files/data/ipxe"
+    state: absent
+  when: cleanup_ipxe | default(true)
+
+- name: Reset iDRAC to default network boot settings
+  dellemc.openmanage.idrac_bios:
+    idrac_ip: "{{ inventory_hostname }}"
+    idrac_user: "{{ idrac_creds.username }}"
+    idrac_password: "{{ idrac_creds.password }}"
+    attributes:
+      BootMode: "Bios"
+      BootSeqRetry: "Disabled"
+      FirstBootDevice: "HardDisk"
+  when: reset_idrac_boot | default(true)
+
+- name: Log cleanup completion
+  ansible.builtin.debug:
+    msg: "Cleanup completed for Harvester installation on {{ inventory_hostname }}"
+# Note: Add any additional cleanup tasks specific to your environment
+# For example, you might need to clean up network configurations,
+# remove temporary user accounts, etc.
